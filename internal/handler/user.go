@@ -21,12 +21,12 @@ func InitilizeUserStore() *UserStore {
 	return &UserStore{}
 }
 
-func (bs *UserStore) GetUsers() []User {
-	return bs.users
+func (us *UserStore) GetUsers() []User {
+	return us.users
 }
 
-func (bs *UserStore) GetUserById(id string) (User, error) {
-	for _, user := range bs.users {
+func (us *UserStore) GetUserById(id string) (User, error) {
+	for _, user := range us.users {
 		if user.Id == id {
 			return user, nil
 		}
@@ -34,28 +34,28 @@ func (bs *UserStore) GetUserById(id string) (User, error) {
 	return User{}, errors.New("user not found")
 }
 
-func (bs *UserStore) CreateUser(name string, city string) {
-	bs.users = append(bs.users, User{
+func (us *UserStore) CreateUser(name string, city string) {
+	us.users = append(us.users, User{
 		Id:   uuid.NewString(),
 		Name: name,
 		City: city,
 	})
 }
 
-func (bs *UserStore) Updateuser(user User) (User, error) {
-	for id, crruser := range bs.users {
+func (us *UserStore) UpdateUser(user User) (User, error) {
+	for id, crruser := range us.users {
 		if crruser.Id == user.Id {
-			bs.users[id] = user
+			us.users[id] = user
 			return user, nil
 		}
 	}
 	return User{}, errors.New("user not found")
 }
 
-func (bs *UserStore) Deleteuser(user User) error {
-	for id, crruser := range bs.users {
+func (us *UserStore) DeleteUser(user User) error {
+	for id, crruser := range us.users {
 		if crruser.Id == user.Id {
-			bs.users = append(bs.users[:id], bs.users[id+1:]...)
+			us.users = append(us.users[:id], us.users[id+1:]...)
 			return nil
 		}
 	}
