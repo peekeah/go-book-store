@@ -1,6 +1,10 @@
-package books
+package handler
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/google/uuid"
+)
 
 type Book struct {
 	Id            string `json:"id"`
@@ -30,8 +34,13 @@ func (bs *BookStore) GetBookById(id string) (Book, error) {
 	return Book{}, errors.New("book not found")
 }
 
-func (bs *BookStore) CreateBook(book Book) {
-	bs.books = append(bs.books, book)
+func (bs *BookStore) CreateBook(bookName string, author string, published_year int) {
+	bs.books = append(bs.books, Book{
+		Id:            uuid.NewString(),
+		Name:          bookName,
+		Author:        author,
+		PublishedYear: published_year,
+	})
 }
 
 func (bs *BookStore) UpdateBook(book Book) (Book, error) {
