@@ -1,7 +1,8 @@
 package main
 
-import "fmt"
+import "github.com/peekeah/book-store/app"
 
 func main() {
-	fmt.Println("hello world")
+	server := app.InitilizeServer(3000)
+	server.Run()
 }
