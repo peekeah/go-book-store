@@ -5,17 +5,18 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/peekeah/book-store/config"
 )
 
-type UserBody struct {
-	Id    string
+type JWTTokenBody struct {
+	Id    uint
 	Email string
 	Name  string
 }
 
-var secretKey = []byte("secret-key")
+var secretKey = []byte(config.GetConfig().JWTSecretKey)
 
-func CreateJWTToken(user UserBody) (string, error) {
+func CreateJWTToken(user JWTTokenBody) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"id":    user.Id,

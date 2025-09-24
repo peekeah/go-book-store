@@ -2,41 +2,28 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
+	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/peekeah/book-store/model"
+	"gorm.io/gorm"
 )
 
-type Book struct {
-	Id              string `json:"id"`
-	Name            string `json:"name"`
-	Author          string `json:"author"`
-	PublishedYear   int    `json:"published_year"`
-	AvailableCopies int    `json:"available_copies"`
+func GetBooks(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	books := []model.Book{}
+
+	if err := db.Model(&books); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, books)
 }
 
-type creatBook struct {
-	Name            string `json:"name"`
-	Author          string `json:"author"`
-	PublishedYear   int    `json:"published_year"`
-	AvailableCopies int    `json:"available_copies"`
-}
-
-type BookStore struct {
-	books []Book
-}
-
-func NewBookStore() *BookStore {
-	return &BookStore{}
-}
-
-func (bs *BookStore) GetBooks(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, &bs.books)
-}
-
-func (bs *BookStore) GetBookById(w http.ResponseWriter, r *http.Request) {
+func GetBookById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	bookId, ok := vars["id"]
 
@@ -45,134 +32,164 @@ func (bs *BookStore) GetBookById(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, book := range bs.books {
-		if book.Id == bookId {
-			respondJSON(w, http.StatusOK, book)
-			return
-		}
+	book := model.Book{}
+
+	if err := db.First(&book, bookId); err != nil {
+		respondError(w, http.StatusNotFound, "book not found")
+		return
 	}
-	respondError(w, http.StatusBadRequest, "book not found")
+
+	respondJSON(w, http.StatusOK, book)
 }
 
-func (bs *BookStore) CreateBook(w http.ResponseWriter, r *http.Request) {
+func CreateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	book := model.Book{}
+	decoder := json.NewDecoder(r.Body)
+
+	if err := decoder.Decode(&book); err != nil {
+		fmt.Println("hre:", err)
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	defer r.Body.Close()
-	var body creatBook
 
-	byte, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
+	if err := db.Save(&book).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	err = json.Unmarshal(byte, &body)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	newBook := Book{
-		uuid.NewString(),
-		body.Name,
-		body.Author,
-		body.PublishedYear,
-		body.AvailableCopies,
-	}
-
-	bs.books = append(bs.books, newBook)
-	respondJSON(w, http.StatusCreated, newBook)
+	respondJSON(w, http.StatusCreated, book)
 }
 
-func (bs *BookStore) UpdateBook(w http.ResponseWriter, r *http.Request) {
-	var book Book
-	bytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	err = json.Unmarshal(bytes, &book)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	for id, crrBook := range bs.books {
-		if crrBook.Id == book.Id {
-			bs.books[id] = book
-			respondJSON(w, http.StatusOK, book)
-			return
-		}
-	}
-	respondError(w, http.StatusForbidden, "book not found")
-}
-
-func (bs *BookStore) DeleteBook(w http.ResponseWriter, r *http.Request) {
+func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	bookId, ok := vars["id"]
+	bookIdStr, ok := vars["id"]
 
 	if !ok {
 		respondError(w, http.StatusBadRequest, "url params not passed")
 		return
 	}
 
-	for id, book := range bs.books {
-		if book.Id == bookId {
-			bs.books = append(bs.books[:id], bs.books[id+1:]...)
-			respondJSON(w, http.StatusOK, "successfully deleted book")
-			return
-		}
-	}
-	respondError(w, http.StatusBadRequest, "book not found")
-}
-
-func (bs *BookStore) PurchaseBook(w http.ResponseWriter, r *http.Request, us *UserStore) {
-	bytes, err := io.ReadAll(r.Body)
+	bookId, err := strconv.Atoi(bookIdStr)
 	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid url params")
+		return
+	}
+
+	book := model.Book{}
+	book.ID = uint(bookId)
+
+	decoder := json.NewDecoder(r.Body)
+
+	defer r.Body.Close()
+
+	if err := decoder.Decode(&book); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	dbBook := model.Book{}
+
+	if err := db.First(&db, book.ID); err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
+	if dbBook.ID == 0 {
+		respondError(w, http.StatusNotFound, "book does not exist")
+		return
+	}
+
+	if err := db.Save(&book).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, book)
+}
+
+func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	bookIdStr, ok := vars["id"]
+
+	if !ok {
+		respondError(w, http.StatusBadRequest, "url params not passed")
+		return
+	}
+
+	bookId, err := strconv.Atoi(bookIdStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	book := model.Book{}
+
+	if err := db.First(&book, bookId); err != nil {
+		respondError(w, http.StatusNotFound, "book not found")
+		return
+	}
+
+	if err := db.Delete(&book); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, book)
+}
+
+func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	bookIdStr, ok := vars["id"]
+
+	if !ok {
+		respondError(w, http.StatusBadRequest, "book id required")
+	}
+
+	bookId, err := strconv.Atoi(bookIdStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+	}
+
 	userId := r.Context().Value("user_id")
 
-	var body struct {
-		BookId string `json:"book_id"`
-	}
+	err = db.Transaction(func(tx *gorm.DB) error {
+		// serial db calls
+		book := model.Book{}
+		user := model.User{}
 
-	err = json.Unmarshal(bytes, &body)
+		if err := tx.First(&user, userId); err != nil {
+			respondError(w, http.StatusBadRequest, "user not found")
+			return errors.New("")
+		}
+
+		if err := tx.First(&book, bookId); err != nil {
+			respondError(w, http.StatusBadRequest, "book not found")
+			return errors.New("")
+		}
+
+		if book.AvailableCopies == 0 {
+			respondError(w, http.StatusBadRequest, "book out of stock")
+			return errors.New("")
+		}
+
+		book.AvailableCopies -= book.AvailableCopies
+		book.PurchasedCustomers = append(book.PurchasedCustomers, user)
+		if err := tx.Save(&book); err != nil {
+			respondError(w, http.StatusInternalServerError, "intenal server error")
+			return errors.New("")
+		}
+
+		user.Purchase = append(user.Purchase, book)
+		if err := tx.Save(&user); err != nil {
+			respondError(w, http.StatusInternalServerError, "internal server error")
+			return errors.New("")
+		}
+
+		return nil
+	})
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
+		respondJSON(w, http.StatusOK, struct{ message string }{"successfully purchased book"})
 	}
-
-	// validate user
-	var existUser bool
-	var user User
-	for _, crrUser := range us.users {
-		if crrUser.Id == userId {
-			existUser = true
-			crrUser = &user
-			break
-		}
-	}
-
-	if !existUser {
-		respondError(w, http.StatusForbidden, "user not found")
-		return
-	}
-
-	for id, book := range bs.books {
-		if book.Id == body.BookId {
-			if book.AvailableCopies != 0 {
-				bs.books[id].AvailableCopies -= 1
-
-				// update user
-				user.Purchase = append(user.Purchase, &book)
-				respondJSON(w, http.StatusOK, bs.books[id])
-				return
-			}
-			respondError(w, http.StatusForbidden, "book out of stock")
-			return
-		}
-	}
-	respondError(w, http.StatusBadRequest, "book not found")
 }

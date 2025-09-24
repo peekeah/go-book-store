@@ -1,8 +1,19 @@
 package main
 
-import "github.com/peekeah/book-store/app"
+import (
+	"log"
+
+	"github.com/joho/godotenv"
+	"github.com/peekeah/book-store/app"
+)
 
 func main() {
-	server := app.InitilizeServer(3000)
+	// Load env
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("error while loading .env")
+	}
+
+	server := app.NewSever()
+	server.MigragateDB()
 	server.Run()
 }

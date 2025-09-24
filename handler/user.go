@@ -2,118 +2,99 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/peekeah/book-store/model"
 	"github.com/peekeah/book-store/utils"
+	"gorm.io/gorm"
 )
 
-type User struct {
-	Id       string  `json:"id"`
-	Name     string  `json:"name"`
-	City     string  `json:"city"`
-	Email    string  `json:"email"`
-	Password string  `json:"password"`
-	Purchase []*Book `json:"purchase"`
+func GetUsers(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	users := model.User{}
+
+	if err := db.Model(&users); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, users)
 }
 
-type createUser struct {
-	Name     string `json:"name"`
-	City     string `json:"city"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type UserStore struct {
-	users []*User
-}
-
-func NewUserStore() *UserStore {
-	return &UserStore{}
-}
-
-func (us *UserStore) GetUsers(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, us.users)
-}
-
-func (us *UserStore) GetUserById(w http.ResponseWriter, r *http.Request) {
+func GetUserById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
-		respondError(w, http.StatusForbidden, "user not found")
+		respondError(w, http.StatusBadRequest, "id is required")
 		return
 	}
 
-	for _, user := range us.users {
-		if user.Id == id {
-			respondJSON(w, http.StatusOK, *user)
-			return
-		}
+	user := model.User{}
+
+	if err := db.First(&user, id); err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
 	}
-	respondError(w, http.StatusForbidden, "user not found")
+
+	respondJSON(w, http.StatusOK, user)
 }
 
-func (us *UserStore) CreateUser(w http.ResponseWriter, r *http.Request) {
-	bytes, err := io.ReadAll(r.Body)
+func CreateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	user := model.User{}
+	if err := decoder.Decode(&user); err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+	}
+
+	hashedPwd, err := utils.HashPassword(user.Password)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
+	}
+
+	user.Password = hashedPwd
+
+	if err := db.Save(&user).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	var userBody createUser
-
-	if err = json.Unmarshal(bytes, &userBody); err != nil {
-		respondError(w, http.StatusBadRequest, "incorrect body")
-		return
-	}
-
-	hashedPwd, err := utils.HashPassword(userBody.Password)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
-
-	newUser := &User{
-		Id:       uuid.NewString(),
-		Name:     userBody.Name,
-		City:     userBody.City,
-		Email:    userBody.Email,
-		Password: hashedPwd,
-	}
-
-	us.users = append(us.users, newUser)
-
-	respondJSON(w, http.StatusCreated, newUser)
+	respondJSON(w, http.StatusCreated, user)
 }
 
-func (us *UserStore) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	bytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
+func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	user := model.User{}
+
+	if err := decoder.Decode(&user); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	var user User
+	dbUser := model.User{}
 
-	err = json.Unmarshal(bytes, &user)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, "incorrect body")
+	if err := db.First(&db, dbUser.ID).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	for id, crrUser := range us.users {
-		if crrUser.Id == user.Id {
-			us.users[id] = &user
-			respondJSON(w, http.StatusOK, user)
-			return
-		}
+	if dbUser.ID == 0 {
+		respondError(w, http.StatusNotFound, "user does not exist")
+		return
 	}
-	respondError(w, http.StatusForbidden, "user not found")
+
+	if err := db.Save(&user).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, user)
 }
 
-func (us *UserStore) DeleteUser(w http.ResponseWriter, r *http.Request) {
+func DeleteUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userId, ok := vars["id"]
 
@@ -122,59 +103,55 @@ func (us *UserStore) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for id, crruser := range us.users {
-		if crruser.Id == userId {
-			us.users = append(us.users[:id], us.users[id+1:]...)
-			respondJSON(w, http.StatusOK, "successfully deleted user")
-			return
-		}
+	user := model.User{}
+
+	if err := db.First(&user, userId); err != nil {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
 	}
-	respondError(w, http.StatusForbidden, "user not found")
+
+	if user.ID == 0 {
+		respondError(w, http.StatusNotFound, "user not found")
+		return
+	}
+
+	if err := db.Delete(&user, userId).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, user)
 }
 
-func (us *UserStore) UserLogin(w http.ResponseWriter, r *http.Request) {
-	bytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
-		return
-	}
+func UserLogin(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
 
-	var body struct {
+	body := struct {
 		Email    string
 		Password string
-	}
+	}{}
 
-	if err = json.Unmarshal(bytes, &body); err != nil {
-		respondError(w, http.StatusForbidden, "incorrect payload")
+	user := model.User{}
+
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	for id := range us.users {
-		if us.users[id].Email == body.Email {
-			if !utils.ComparePassword(body.Password, us.users[id].Password) {
-				respondError(w, http.StatusUnauthorized, "password does not match")
-				return
-			}
-
-			token, err := utils.CreateJWTToken(struct {
-				Id    string
-				Email string
-				Name  string
-			}{
-				us.users[id].Id,
-				us.users[id].Name,
-				us.users[id].Email,
-			})
-			if err != nil {
-				respondError(w, http.StatusInternalServerError, "internal server error")
-				return
-			}
-
-			respondJSON(w, http.StatusOK, struct {
-				Token string `json:"token"`
-			}{token})
-			return
-		}
+	// check user id db
+	if err := db.First(&user).Error; err != nil {
+		respondError(w, http.StatusNotFound, "user does not exist")
+		return
 	}
-	respondError(w, http.StatusForbidden, "user not found")
+
+	token, err := utils.CreateJWTToken(utils.JWTTokenBody{user.ID, user.Email, user.Name})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, struct {
+		Token string `json:"token"`
+	}{token})
 }
