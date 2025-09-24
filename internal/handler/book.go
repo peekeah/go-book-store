@@ -132,8 +132,9 @@ func (bs *BookStore) PurchaseBook(w http.ResponseWriter, r *http.Request, us *Us
 		return
 	}
 
+	userId := r.Context().Value("user_id")
+
 	var body struct {
-		UserId string `json:"user_id"`
 		BookId string `json:"book_id"`
 	}
 
@@ -147,7 +148,7 @@ func (bs *BookStore) PurchaseBook(w http.ResponseWriter, r *http.Request, us *Us
 	var existUser bool
 	var user User
 	for _, crrUser := range us.users {
-		if crrUser.Id == body.UserId {
+		if crrUser.Id == userId {
 			existUser = true
 			crrUser = &user
 			break
