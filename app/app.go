@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/peekeah/book-store/internal/handler"
+	"github.com/peekeah/book-store/handler"
 )
 
 type Server struct {
@@ -26,8 +26,8 @@ func (s *Server) Run() {
 		w.Write([]byte("Hello from Go Book"))
 	})
 
-	users := handler.InitilizeUserStore()
-	books := handler.InitilizeBookStore()
+	users := handler.NewUserStore()
+	books := handler.NewBookStore()
 
 	// Auth Routes
 	authRoutes := router.PathPrefix("/auth").Subrouter()

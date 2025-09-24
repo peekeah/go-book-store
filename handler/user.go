@@ -30,7 +30,7 @@ type UserStore struct {
 	users []*User
 }
 
-func InitilizeUserStore() *UserStore {
+func NewUserStore() *UserStore {
 	return &UserStore{}
 }
 

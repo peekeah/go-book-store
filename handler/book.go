@@ -28,7 +28,7 @@ type BookStore struct {
 	books []Book
 }
 
-func InitilizeBookStore() *BookStore {
+func NewBookStore() *BookStore {
 	return &BookStore{}
 }
 
