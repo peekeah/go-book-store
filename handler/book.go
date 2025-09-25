@@ -59,6 +59,12 @@ func CreateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 
+	// validate payload
+	if err := validate.Struct(&book); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := db.Save(&book).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -82,17 +88,15 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	book := model.Book{}
+	book := model.UpdateBook{}
 	book.ID = uint(bookId)
 
-	decoder := json.NewDecoder(r.Body)
-
-	defer r.Body.Close()
-
-	if err := decoder.Decode(&book); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	defer r.Body.Close()
 
 	dbBook := model.Book{}
 
@@ -106,12 +110,12 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := db.Save(&book).Error; err != nil {
+	if err := db.Model(&dbBook).Updates(&book).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, book)
+	respondJSON(w, http.StatusOK, dbBook)
 }
 
 func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
