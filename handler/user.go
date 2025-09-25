@@ -104,7 +104,7 @@ func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	dbUser := model.User{}
 
-	if err := db.First(&dbUser, payload.ID).Error; err != nil {
+	if err := db.Omit("password").First(&dbUser, payload.ID).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
