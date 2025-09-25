@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -15,7 +14,7 @@ import (
 func GetBooks(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	books := []model.Book{}
 
-	if err := db.Model(&books); err != nil {
+	if err := db.Find(&books).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -28,13 +27,19 @@ func GetBookById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	bookId, ok := vars["id"]
 
 	if !ok {
-		respondError(w, http.StatusInternalServerError, "internal server error")
+		respondError(w, http.StatusBadRequest, "invalid book id")
+		return
+	}
+
+	bookIdInt, err := strconv.Atoi(bookId)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid book id")
 		return
 	}
 
 	book := model.Book{}
 
-	if err := db.First(&book, bookId); err != nil {
+	if err := db.First(&book, bookIdInt).Error; err != nil {
 		respondError(w, http.StatusNotFound, "book not found")
 		return
 	}
@@ -91,8 +96,8 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	dbBook := model.Book{}
 
-	if err := db.First(&db, book.ID); err != nil {
-		respondError(w, http.StatusInternalServerError, "internal server error")
+	if err := db.First(&dbBook, book.ID).Error; err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -126,12 +131,12 @@ func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	book := model.Book{}
 
-	if err := db.First(&book, bookId); err != nil {
+	if err := db.First(&book, bookId).Error; err != nil {
 		respondError(w, http.StatusNotFound, "book not found")
 		return
 	}
 
-	if err := db.Delete(&book); err != nil {
+	if err := db.Delete(&book).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -154,42 +159,65 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	userId := r.Context().Value("user_id")
 
-	err = db.Transaction(func(tx *gorm.DB) error {
-		// serial db calls
-		book := model.Book{}
-		user := model.User{}
+	// Transaction
+	tx := db.Begin()
 
-		if err := tx.First(&user, userId); err != nil {
-			respondError(w, http.StatusBadRequest, "user not found")
-			return errors.New("")
+	defer func() {
+		if r := recover(); r != nil {
 		}
+		tx.Rollback()
+	}()
 
-		if err := tx.First(&book, bookId); err != nil {
-			respondError(w, http.StatusBadRequest, "book not found")
-			return errors.New("")
-		}
-
-		if book.AvailableCopies == 0 {
-			respondError(w, http.StatusBadRequest, "book out of stock")
-			return errors.New("")
-		}
-
-		book.AvailableCopies -= book.AvailableCopies
-		book.PurchasedCustomers = append(book.PurchasedCustomers, user)
-		if err := tx.Save(&book); err != nil {
-			respondError(w, http.StatusInternalServerError, "intenal server error")
-			return errors.New("")
-		}
-
-		user.Purchase = append(user.Purchase, book)
-		if err := tx.Save(&user); err != nil {
-			respondError(w, http.StatusInternalServerError, "internal server error")
-			return errors.New("")
-		}
-
-		return nil
-	})
-	if err != nil {
-		respondJSON(w, http.StatusOK, struct{ message string }{"successfully purchased book"})
+	if err := tx.Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusInternalServerError, "intenal server error")
+		return
 	}
+
+	user := model.User{}
+	book := model.Book{}
+
+	if err := tx.First(&user, userId).Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusBadRequest, "user not found")
+		return
+	}
+
+	if err := tx.First(&book, bookId).Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusBadRequest, "book not found")
+		return
+	}
+
+	if book.AvailableCopies == 0 {
+		tx.Rollback()
+		respondError(w, http.StatusBadRequest, "book out of stock")
+		return
+	}
+
+	book.AvailableCopies = book.AvailableCopies - 1
+
+	book.PurchasedCustomers = append(book.PurchasedCustomers, user)
+	if err := tx.Save(&book).Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusInternalServerError, "intenal server error")
+		return
+	}
+
+	user.Purchase = append(user.Purchase, book)
+	if err := tx.Save(&user).Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, struct {
+		Message string `json:"message"`
+	}{Message: "successfully purchased book"})
 }
