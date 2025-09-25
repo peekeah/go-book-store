@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/peekeah/book-store/model"
@@ -11,9 +12,9 @@ import (
 )
 
 func GetUsers(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	users := model.User{}
+	users := []model.User{}
 
-	if err := db.Model(&users).Error; err != nil {
+	if err := db.Find(&users).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -31,7 +32,7 @@ func GetUserById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	user := model.User{}
 
-	if err := db.First(&user, id); err != nil {
+	if err := db.First(&user, id).Error; err != nil {
 		respondError(w, http.StatusNotFound, "user not found")
 		return
 	}
@@ -64,10 +65,25 @@ func CreateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userId, ok := vars["id"]
+
+	if !ok {
+		respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	userIdInt, err := strconv.Atoi(userId)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
 	user := model.User{}
+	user.ID = uint(userIdInt)
 
 	if err := decoder.Decode(&user); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
@@ -76,7 +92,7 @@ func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	dbUser := model.User{}
 
-	if err := db.First(&db, dbUser.ID).Error; err != nil {
+	if err := db.First(&dbUser, user.ID).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -105,7 +121,13 @@ func DeleteUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	user := model.User{}
 
-	if err := db.First(&user, userId); err != nil {
+	userIdInt, err := strconv.Atoi(userId)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	if err := db.First(&user, userIdInt).Error; err != nil {
 		respondError(w, http.StatusNotFound, "user not found")
 		return
 	}
