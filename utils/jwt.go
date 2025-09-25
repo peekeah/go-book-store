@@ -9,44 +9,51 @@ import (
 )
 
 type JWTTokenBody struct {
-	Id    uint
+	ID    uint
 	Email string
 	Name  string
 }
 
-var secretKey = []byte(config.GetConfig().JWTSecretKey)
-
-func CreateJWTToken(user JWTTokenBody) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
-		jwt.MapClaims{
-			"id":    user.Id,
-			"email": user.Email,
-			"name":  user.Name,
-			"exp":   time.Now().Add(time.Hour * 24).Unix(),
-		})
-
-	return token.SignedString(secretKey)
+type Token struct {
+	UserId string  `json:"user_id"`
+	Email  string  `json:"email"`
+	Name   string  `json:"name"`
+	Expiry float64 `json:"exp"`
+	jwt.RegisteredClaims
 }
 
-func VerifyJWTToken(token string) (string, error) {
-	parsedToken, err := jwt.ParseWithClaims(token, &jwt.MapClaims{}, func(toke *jwt.Token) (interface{}, error) {
-		return []byte(secretKey), nil
+func CreateJWTToken(user JWTTokenBody) (string, error) {
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": user.ID,
+		"expiry":  time.Now().Add(time.Hour * 24).Unix(),
 	})
+
+	tokenStr, err := claims.SignedString([]byte(config.GetConfig().JWTSecretKey))
 	if err != nil {
 		return "", err
 	}
 
-	if !parsedToken.Valid {
-		return "", errors.New("unauthorized")
+	return tokenStr, nil
+}
+
+func VerifyJWTToken(tokenStr string) (uint, error) {
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
+		return []byte(config.GetConfig().JWTSecretKey), nil
+	})
+	if err != nil || !token.Valid {
+		return 0, nil
 	}
 
-	claims, ok := parsedToken.Claims.(*jwt.MapClaims)
+	if !token.Valid {
+		return 0, err
+	}
 
+	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errors.New("failed to parse token")
+		return 0, errors.New("")
 	}
 
-	id := (*claims)["id"].(string)
+	id := uint(claims["user_id"].(float64))
 
-	return id, err
+	return id, nil
 }

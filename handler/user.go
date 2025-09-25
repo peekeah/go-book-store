@@ -13,7 +13,7 @@ import (
 func GetUsers(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	users := model.User{}
 
-	if err := db.Model(&users); err != nil {
+	if err := db.Model(&users).Error; err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
@@ -145,7 +145,7 @@ func UserLogin(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := utils.CreateJWTToken(utils.JWTTokenBody{user.ID, user.Email, user.Name})
+	token, err := utils.CreateJWTToken(utils.JWTTokenBody{ID: user.ID, Email: user.Email, Name: user.Name})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
