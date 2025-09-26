@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/peekeah/book-store/config"
 	"github.com/peekeah/book-store/handler"
+	"github.com/peekeah/book-store/logger"
 	"github.com/peekeah/book-store/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -40,11 +41,20 @@ func (s *Server) MigragateDB() {
 
 func (s *Server) Run() {
 	router := mux.NewRouter()
+	l := logger.Get()
 
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Hello from Go Book"))
+	})
+
+	// Logger
+	router.Use(logger.ReqMiddleware)
+
+	// Health
+	router.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("."))
 	})
 
 	// Auth Routes
@@ -81,11 +91,13 @@ func (s *Server) Run() {
 	bookAdminRoutes.HandleFunc("/", s.RequestHandler(handler.CreateBook)).Methods("POST")
 
 	// Run Server
-	fmt.Println("server starting on port", s.addr)
+	l.Info().
+		Str("port", s.addr).
+		Msgf("Starting Go Book Store App on port '%s'", s.addr)
 
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", s.addr), router); err != nil {
-		log.Fatal(err)
-	}
+	l.Fatal().
+		Err(http.ListenAndServe(":"+s.addr, router)).
+		Msg("Go Book Store App Closed")
 }
 
 type RequestHandler func(db *gorm.DB, w http.ResponseWriter, r *http.Request)
