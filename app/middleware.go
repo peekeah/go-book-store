@@ -5,14 +5,17 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/peekeah/book-store/handler"
+	"github.com/peekeah/book-store/model"
 	"github.com/peekeah/book-store/utils"
+	"gorm.io/gorm"
 )
 
-func authMiddleware(next http.Handler) http.Handler {
+func authenticate(db *gorm.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := r.Header.Get("Authorization")
 		if tokenStr == "" {
-			w.WriteHeader(http.StatusUnauthorized)
+			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
@@ -20,11 +23,54 @@ func authMiddleware(next http.Handler) http.Handler {
 
 		id, err := utils.VerifyJWTToken(tokenStr)
 		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
+			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "user_id", id)
+		// validate user in db
+		user := model.User{}
+
+		if err := db.First(&user, id).Error; err != nil {
+			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+
+		if user.ID == 0 {
+			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "user_id", user.ID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func authorizeAdmin(db *gorm.DB, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// read from ctx
+		userId := r.Context().Value("user_id")
+
+		// validate user in db
+		user := model.User{}
+
+		if err := db.First(&user, userId).Error; err != nil {
+			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			return
+		}
+
+		if user.ID == 0 {
+			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		if user.Role != "admin" {
+			handler.RespondError(w, http.StatusUnauthorized, "only admin are allowed")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+
+		ctx := context.WithValue(r.Context(), "role", "admin")
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -9,6 +9,7 @@ type User struct {
 	City     string `json:"city,omitempty"`
 	Email    string `json:"email" validate:"required"`
 	Password string `json:"password,omitempty" validate:"required"`
+	Role     string `json:"role"`
 
 	Purchase []Book `gorm:"many2many:user_books" json:"purchase"`
 }
@@ -18,4 +19,5 @@ type UpdateUserPayload struct {
 	Name  string `json:"name,omitempty"`
 	City  string `json:"city,omitempty"`
 	Email string `json:"email,omitempty"`
+	Role  string `json:"role,omitempty"`
 }

@@ -55,22 +55,30 @@ func (s *Server) Run() {
 	// Authorized routes
 	// User Routes
 	userRoutes := router.PathPrefix("/users").Subrouter()
-	userRoutes.Use(authMiddleware)
-	userRoutes.HandleFunc("/", s.RequestHandler(handler.GetUsers)).Methods("GET")
+	userRoutes.Use(s.MiddlewareHandler(authenticate))
 	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.GetUserById)).Methods("GET")
 	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.UpdateUser)).Methods("POST")
 	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.DeleteUser)).Methods("DELETE")
 
+	// Admin user routes
+	userAdminRoutes := userRoutes.PathPrefix("/").Subrouter()
+	userAdminRoutes.Use(s.MiddlewareHandler(authorizeAdmin))
+	userAdminRoutes.HandleFunc("/", s.RequestHandler(handler.GetUsers)).Methods("GET")
+
 	// Book Routes
 	bookRoutes := router.PathPrefix("/books").Subrouter()
-	bookRoutes.Use(authMiddleware)
+	bookRoutes.Use(s.MiddlewareHandler(authenticate))
 	bookRoutes.HandleFunc("/purchase/{id}", s.RequestHandler(handler.PurchaseBook)).Methods("POST")
 
 	bookRoutes.HandleFunc("/", s.RequestHandler(handler.GetBooks)).Methods("GET")
-	bookRoutes.HandleFunc("/", s.RequestHandler(handler.CreateBook)).Methods("POST")
 	bookRoutes.HandleFunc("/{id}", s.RequestHandler(handler.GetBookById)).Methods("GET")
-	bookRoutes.HandleFunc("/{id}", s.RequestHandler(handler.UpdateBook)).Methods("POST")
-	bookRoutes.HandleFunc("/{id}", s.RequestHandler(handler.DeleteBook)).Methods("DELETE")
+
+	// Admin book routes
+	bookAdminRoutes := bookRoutes.PathPrefix("/").Subrouter()
+	bookAdminRoutes.Use(s.MiddlewareHandler(authorizeAdmin))
+	bookAdminRoutes.HandleFunc("/{id}", s.RequestHandler(handler.UpdateBook)).Methods("POST")
+	bookAdminRoutes.HandleFunc("/{id}", s.RequestHandler(handler.DeleteBook)).Methods("DELETE")
+	bookAdminRoutes.HandleFunc("/", s.RequestHandler(handler.CreateBook)).Methods("POST")
 
 	// Run Server
 	fmt.Println("server starting on port", s.addr)
@@ -85,5 +93,13 @@ type RequestHandler func(db *gorm.DB, w http.ResponseWriter, r *http.Request)
 func (s *Server) RequestHandler(handler RequestHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handler(s.DB, w, r)
+	}
+}
+
+type MiddlewareHandler func(db *gorm.DB, next http.Handler) http.Handler
+
+func (s *Server) MiddlewareHandler(mw MiddlewareHandler) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return mw(s.DB, next)
 	}
 }
