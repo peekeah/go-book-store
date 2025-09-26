@@ -187,12 +187,6 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// Transaction
 	tx := db.Begin()
 
-	defer func() {
-		if r := recover(); r != nil {
-		}
-		tx.Rollback()
-	}()
-
 	if err := tx.Error; err != nil {
 		tx.Rollback()
 		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
