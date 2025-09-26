@@ -6,7 +6,7 @@ import (
 )
 
 // respondJSON makes the response with payload as json format
-func RespondJSON(w http.ResponseWriter, status int, payload interface{}) {
+func sendResponse(w http.ResponseWriter, status int, payload interface{}) {
 	response, err := json.Marshal(payload)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -18,7 +18,45 @@ func RespondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Write([]byte(response))
 }
 
-// respondError makes the error response with payload as json format
-func RespondError(w http.ResponseWriter, code int, message string) {
-	RespondJSON(w, code, map[string]string{"error": message})
+type APIResponse interface {
+	Dispatch()
+}
+
+type SuccessResponse struct {
+	RW      http.ResponseWriter
+	Status  int
+	Data    any
+	Message string
+}
+
+type ErrorResponse struct {
+	RW     http.ResponseWriter
+	Status int
+	Error  any
+}
+
+type successJSON struct {
+	Status  int    `json:"status"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
+}
+
+type errorJSON struct {
+	Status int `json:"status"`
+	Error  any `json:"error"`
+}
+
+func (r *SuccessResponse) Dispatch() {
+	sendResponse(r.RW, r.Status, successJSON{
+		Status:  r.Status,
+		Message: r.Message,
+		Data:    r.Data,
+	})
+}
+
+func (r *ErrorResponse) Dispatch() {
+	sendResponse(r.RW, r.Status, errorJSON{
+		Status: r.Status,
+		Error:  r.Error,
+	})
 }

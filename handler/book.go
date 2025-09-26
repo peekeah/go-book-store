@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -15,11 +14,13 @@ func GetBooks(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	books := []model.Book{}
 
 	if err := db.Find(&books).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, books)
+	res := SuccessResponse{w, http.StatusOK, books, ""}
+	res.Dispatch()
 }
 
 func GetBookById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -27,31 +28,36 @@ func GetBookById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	bookId, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "invalid book id")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid book id"}
+		res.Dispatch()
 		return
 	}
 
 	bookIdInt, err := strconv.Atoi(bookId)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "invalid book id")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid book id"}
+		res.Dispatch()
 		return
 	}
 
 	book := model.Book{}
 
 	if err := db.First(&book, bookIdInt).Error; err != nil {
-		RespondError(w, http.StatusNotFound, "book not found")
+		res := ErrorResponse{w, http.StatusNotFound, "book not found"}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, book)
+	res := SuccessResponse{w, http.StatusOK, book, ""}
+	res.Dispatch()
 }
 
 func CreateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	book := model.Book{}
 
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
@@ -59,18 +65,19 @@ func CreateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	// validate payload
 	if err := validate.Struct(&book); err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.Save(&book).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	fmt.Printf("%+v", book)
-
-	RespondJSON(w, http.StatusCreated, book)
+	res := SuccessResponse{w, http.StatusCreated, book, ""}
+	res.Dispatch()
 }
 
 func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -78,13 +85,15 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	bookIdStr, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "url params not passed")
+		res := ErrorResponse{w, http.StatusBadRequest, "url params not passed"}
+		res.Dispatch()
 		return
 	}
 
 	bookId, err := strconv.Atoi(bookIdStr)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "invalid url params")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid url params"}
+		res.Dispatch()
 		return
 	}
 
@@ -92,7 +101,8 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	book.ID = uint(bookId)
 
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
@@ -101,21 +111,25 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	dbBook := model.Book{}
 
 	if err := db.First(&dbBook, book.ID).Error; err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	if dbBook.ID == 0 {
-		RespondError(w, http.StatusNotFound, "book does not exist")
+		res := ErrorResponse{w, http.StatusNotFound, "book does not exist"}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.Model(&dbBook).Updates(&book).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dbBook)
+	res := SuccessResponse{w, http.StatusOK, dbBook, ""}
+	res.Dispatch()
 }
 
 func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -123,29 +137,34 @@ func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	bookIdStr, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "url params not passed")
+		res := ErrorResponse{w, http.StatusBadRequest, "url params not passed"}
+		res.Dispatch()
 		return
 	}
 
 	bookId, err := strconv.Atoi(bookIdStr)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	book := model.Book{}
 
 	if err := db.First(&book, bookId).Error; err != nil {
-		RespondError(w, http.StatusNotFound, "book not found")
+		res := ErrorResponse{w, http.StatusNotFound, "book not found"}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.Delete(&book).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, book)
+	res := SuccessResponse{w, http.StatusOK, book, ""}
+	res.Dispatch()
 }
 
 func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -153,12 +172,14 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	bookIdStr, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "book id required")
+		res := ErrorResponse{w, http.StatusBadRequest, "book id required"}
+		res.Dispatch()
 	}
 
 	bookId, err := strconv.Atoi(bookIdStr)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 	}
 
 	userId := r.Context().Value("user_id")
@@ -174,7 +195,8 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	if err := tx.Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusInternalServerError, "intenal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
@@ -183,19 +205,22 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	if err := tx.First(&user, userId).Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusBadRequest, "user not found")
+		res := ErrorResponse{w, http.StatusBadRequest, "user not found"}
+		res.Dispatch()
 		return
 	}
 
 	if err := tx.First(&book, bookId).Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusBadRequest, "book not found")
+		res := ErrorResponse{w, http.StatusBadRequest, "book not found"}
+		res.Dispatch()
 		return
 	}
 
 	if book.AvailableCopies == 0 {
 		tx.Rollback()
-		RespondError(w, http.StatusBadRequest, "book out of stock")
+		res := ErrorResponse{w, http.StatusBadRequest, "book out of stock"}
+		res.Dispatch()
 		return
 	}
 
@@ -204,24 +229,26 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	book.PurchasedCustomers = append(book.PurchasedCustomers, user)
 	if err := tx.Save(&book).Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusInternalServerError, "intenal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	user.Purchase = append(user.Purchase, book)
 	if err := tx.Save(&user).Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, struct {
-		Message string `json:"message"`
-	}{Message: "successfully purchased book"})
+	res := SuccessResponse{w, http.StatusOK, nil, "successfully purchased book"}
+	res.Dispatch()
 }

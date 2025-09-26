@@ -15,7 +15,8 @@ func authenticate(db *gorm.DB, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := r.Header.Get("Authorization")
 		if tokenStr == "" {
-			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, "unauthorized"}
+			res.Dispatch()
 			return
 		}
 
@@ -23,7 +24,8 @@ func authenticate(db *gorm.DB, next http.Handler) http.Handler {
 
 		id, err := utils.VerifyJWTToken(tokenStr)
 		if err != nil {
-			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, "unauthorized"}
+			res.Dispatch()
 			return
 		}
 
@@ -31,12 +33,14 @@ func authenticate(db *gorm.DB, next http.Handler) http.Handler {
 		user := model.User{}
 
 		if err := db.First(&user, id).Error; err != nil {
-			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, err.Error()}
+			res.Dispatch()
 			return
 		}
 
 		if user.ID == 0 {
-			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, err.Error()}
+			res.Dispatch()
 			return
 		}
 
@@ -54,17 +58,20 @@ func authorizeAdmin(db *gorm.DB, next http.Handler) http.Handler {
 		user := model.User{}
 
 		if err := db.First(&user, userId).Error; err != nil {
-			handler.RespondError(w, http.StatusUnauthorized, err.Error())
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, err.Error()}
+			res.Dispatch()
 			return
 		}
 
 		if user.ID == 0 {
-			handler.RespondError(w, http.StatusUnauthorized, "unauthorized")
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, "unauthorized"}
+			res.Dispatch()
 			return
 		}
 
 		if user.Role != "admin" {
-			handler.RespondError(w, http.StatusUnauthorized, "only admin are allowed")
+			res := handler.ErrorResponse{w, http.StatusUnauthorized, "only admin are allowed"}
+			res.Dispatch()
 			return
 		}
 

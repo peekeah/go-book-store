@@ -18,55 +18,66 @@ func GetUsers(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	users := []model.User{}
 
 	if err := db.Omit("password").Find(&users).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, users)
+	res := SuccessResponse{w, http.StatusOK, users, ""}
+	res.Dispatch()
 }
 
 func GetUserById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "id is required")
+		res := ErrorResponse{w, http.StatusBadRequest, "id is required"}
+		res.Dispatch()
 		return
 	}
 
 	user := model.User{}
 
 	if err := db.Omit("password").First(&user, id).Error; err != nil {
-		RespondError(w, http.StatusNotFound, "user not found")
+		res := ErrorResponse{w, http.StatusNotFound, "user not found"}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, user)
+	res := SuccessResponse{w, http.StatusOK, user, ""}
+	res.Dispatch()
 }
 
 func CreateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	payload := model.User{}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
+		return
 	}
 
 	defer r.Body.Close()
 
 	if validationErr := validate.Struct(&payload); validationErr != nil {
-		RespondError(w, http.StatusBadRequest, validationErr.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, validationErr.Error()}
+		res.Dispatch()
 		return
 	}
 
 	hashedPwd, err := utils.HashPassword(payload.Password)
 	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "internal server error")
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
+		return
 	}
 
 	existUser := model.User{}
 	existUser.Email = payload.Email
 
 	if err := db.First(&existUser, model.User{Email: payload.Email}).Error; err == nil {
-		RespondError(w, http.StatusBadRequest, "user already exist")
+		res := ErrorResponse{w, http.StatusBadRequest, "user already exist"}
+		res.Dispatch()
 		return
 	}
 
@@ -80,11 +91,13 @@ func CreateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := db.Save(&payload).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusCreated, payload)
+	res := SuccessResponse{w, http.StatusCreated, payload, ""}
+	res.Dispatch()
 }
 
 func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -92,13 +105,15 @@ func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	userId, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "invalid user id")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid user id"}
+		res.Dispatch()
 		return
 	}
 
 	userIdInt, err := strconv.Atoi(userId)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "invalid user id")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid user id"}
+		res.Dispatch()
 		return
 	}
 
@@ -106,35 +121,41 @@ func UpdateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	payload.ID = uint(userIdInt)
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	defer r.Body.Close()
 
 	if validationErr := validate.Struct(&payload); validationErr != nil {
-		RespondError(w, http.StatusBadRequest, validationErr.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, validationErr.Error()}
+		res.Dispatch()
 		return
 	}
 
 	dbUser := model.User{}
 
 	if err := db.Omit("password").First(&dbUser, payload.ID).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	if dbUser.ID == 0 {
-		RespondError(w, http.StatusNotFound, "user does not exist")
+		res := ErrorResponse{w, http.StatusNotFound, "user does not exist"}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.Model(&dbUser).Updates(payload).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, dbUser)
+	res := SuccessResponse{w, http.StatusOK, dbUser, ""}
+	res.Dispatch()
 }
 
 func DeleteUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -142,7 +163,8 @@ func DeleteUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	userId, ok := vars["id"]
 
 	if !ok {
-		RespondError(w, http.StatusBadRequest, "url param not found")
+		res := ErrorResponse{w, http.StatusBadRequest, "url param not found"}
+		res.Dispatch()
 		return
 	}
 
@@ -150,26 +172,31 @@ func DeleteUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 
 	userIdInt, err := strconv.Atoi(userId)
 	if err != nil {
-		RespondError(w, http.StatusBadRequest, "invalid user id")
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid user id"}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.First(&user, userIdInt).Error; err != nil {
-		RespondError(w, http.StatusNotFound, "user not found")
+		res := ErrorResponse{w, http.StatusNotFound, "user not found"}
+		res.Dispatch()
 		return
 	}
 
 	if user.ID == 0 {
-		RespondError(w, http.StatusNotFound, "user not found")
+		res := ErrorResponse{w, http.StatusNotFound, "user not found"}
+		res.Dispatch()
 		return
 	}
 
 	if err := db.Delete(&user, userId).Error; err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, user)
+	res := SuccessResponse{w, http.StatusOK, user, ""}
+	res.Dispatch()
 }
 
 func UserLogin(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
@@ -186,35 +213,42 @@ func UserLogin(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	user := model.User{}
 
 	if err := decoder.Decode(&body); err != nil {
-		RespondError(w, http.StatusBadRequest, err.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
 		return
 	}
 
 	// payload validation
 	if validationErr := validate.Struct(&body); validationErr != nil {
-		RespondError(w, http.StatusBadRequest, validationErr.Error())
+		res := ErrorResponse{w, http.StatusBadRequest, validationErr.Error()}
+		res.Dispatch()
 		return
 	}
 
 	// check user id db
 	if err := db.First(&user, model.User{Email: body.Email}).Error; err != nil {
-		RespondError(w, http.StatusNotFound, "user does not exist")
+		res := ErrorResponse{w, http.StatusNotFound, "user does not exist"}
+		res.Dispatch()
 		return
 	}
 
 	// Validate password
 	if !utils.ComparePassword(body.Password, user.Password) {
-		RespondError(w, http.StatusNotFound, "password does not match")
+		res := ErrorResponse{w, http.StatusNotFound, "password does not match"}
+		res.Dispatch()
 		return
 	}
 
 	token, err := utils.CreateJWTToken(utils.JWTTokenBody{ID: user.ID, Email: user.Email, Name: user.Name})
 	if err != nil {
-		RespondError(w, http.StatusInternalServerError, err.Error())
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, struct {
+	res := SuccessResponse{w, http.StatusOK, struct {
 		Token string `json:"token"`
-	}{token})
+	}{token}, ""}
+
+	res.Dispatch()
 }
