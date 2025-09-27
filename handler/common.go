@@ -35,19 +35,19 @@ type ErrorResponse struct {
 	Error  any
 }
 
-type successJSON struct {
+type SuccessJSON struct {
 	Status  int    `json:"status"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
 }
 
-type errorJSON struct {
+type ErrorJSON struct {
 	Status int `json:"status"`
 	Error  any `json:"error"`
 }
 
 func (r *SuccessResponse) Dispatch() {
-	sendResponse(r.RW, r.Status, successJSON{
+	sendResponse(r.RW, r.Status, SuccessJSON{
 		Status:  r.Status,
 		Message: r.Message,
 		Data:    r.Data,
@@ -55,7 +55,7 @@ func (r *SuccessResponse) Dispatch() {
 }
 
 func (r *ErrorResponse) Dispatch() {
-	sendResponse(r.RW, r.Status, errorJSON{
+	sendResponse(r.RW, r.Status, ErrorJSON{
 		Status: r.Status,
 		Error:  r.Error,
 	})
