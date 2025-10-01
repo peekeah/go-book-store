@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,16 +14,16 @@ import (
 	"github.com/peekeah/book-store/utils"
 )
 
-func TestGetBooks(t *testing.T) {
+func TestGetUsers(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1").
-		AddRow(2, "Book2", "Author2")
+	mockRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
+		AddRow(1, "user1", "user@example.com").
+		AddRow(1, "user2", "user2@example.com")
 
-	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").WillReturnRows(mockRows)
+	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").WillReturnRows(mockRows)
 
-	req, err := http.NewRequest(http.MethodGet, "/books/", nil)
+	req, err := http.NewRequest(http.MethodGet, "/users/", nil)
 	if err != nil {
 		t.Fatalf("error while making request")
 	}
@@ -30,7 +31,7 @@ func TestGetBooks(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	// Handler call
-	GetBooks(db, w, req)
+	GetUsers(db, w, req)
 
 	// validate status
 	if w.Code != http.StatusOK {
@@ -57,20 +58,21 @@ func TestGetBooks(t *testing.T) {
 		t.Fatalf("expeced 3 books, got %d", len(res.Data))
 	}
 
-	if res.Data[0].Name != "Book1" {
-		t.Fatalf("expeced Book1, got %s", res.Data[0].Name)
+	if res.Data[0].Name != "user1" {
+		t.Fatalf("expeced user1, got %s", res.Data[0].Name)
 	}
 }
 
-func TestGetBookById(t *testing.T) {
+func TestGetUserById(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1")
+	mockRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
+		AddRow(1, "user1", "user@example.com")
 
-	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").WillReturnRows(mockRows)
+	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
+		WillReturnRows(mockRows)
 
-	req, err := http.NewRequest(http.MethodGet, "/books/1", nil)
+	req, err := http.NewRequest(http.MethodGet, "/users/1", nil)
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 
 	if err != nil {
@@ -79,7 +81,7 @@ func TestGetBookById(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	GetBookById(db, w, req)
+	GetUserById(db, w, req)
 
 	// validate status
 	if w.Code != http.StatusOK {
@@ -103,18 +105,18 @@ func TestGetBookById(t *testing.T) {
 	}
 
 	if res.Data.ID != 1 {
-		t.Fatalf("wrong book")
+		t.Fatalf("wrong user")
 	}
 }
 
-func TestCreateBook(t *testing.T) {
+func TestCreateUser(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
 	payload := map[string]any{
-		"name":             "Book1",
-		"author":           "Author2",
-		"available_copies": 12,
-		"published_year":   1999,
+		"name":     "user1",
+		"email":    "user@example.com",
+		"city":     "Bengaluru",
+		"password": "test",
 	}
 
 	payloadByte, err := json.Marshal(payload)
@@ -122,22 +124,26 @@ func TestCreateBook(t *testing.T) {
 		t.Error("error while parsing payload")
 	}
 
+	mock.ExpectQuery(`^SELECT (.+) FROM "users"`).
+		WillReturnError(errors.New("user already exist"))
+
 	mock.ExpectBegin()
 
-	mock.ExpectQuery(`^INSERT INTO "books"`).
+	mock.ExpectQuery(`^INSERT INTO "users"`).
 		WithArgs(
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
-			"Book1",
-			"Author2",
-			1999,
-			12,
+			"user1",
+			"Bengaluru",
+			"user@example.com",
+			sqlmock.AnyArg(),
+			"user",
 		).
 		WillReturnRows(mock.NewRows([]string{"ID"}).AddRow(1))
 	mock.ExpectCommit()
 
-	req, err := http.NewRequest(http.MethodPost, "/books", bytes.NewReader(payloadByte))
+	req, err := http.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader(payloadByte))
 	if err != nil {
 		t.Fatalf("error while making request")
 	}
@@ -145,7 +151,7 @@ func TestCreateBook(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
-	CreateBook(db, w, req)
+	CreateUser(db, w, req)
 
 	// validate status
 	if w.Code != http.StatusCreated {
@@ -169,51 +175,112 @@ func TestCreateBook(t *testing.T) {
 	}
 
 	if res.Data.ID != 1 {
-		t.Fatalf("book creation failed")
+		t.Fatalf("failed to create user")
 	}
 }
 
-func TestUpdateBook(t *testing.T) {
+func TestUserLogin(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1")
+	payload := map[string]any{
+		"email":    "user@example.com",
+		"password": "test",
+	}
 
-	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").
-		WithArgs(1, 1).
-		WillReturnRows(mockRows)
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		t.Error("error while parsing payload")
+	}
+
+	hashedPwd, err := utils.HashPassword("test")
+	if err != nil {
+		t.Fatalf("error while hashing password")
+	}
+
+	rows := sqlmock.NewRows([]string{"ID", "email", "password"}).
+		AddRow(1, "user@example.com", hashedPwd)
+
+	mock.ExpectQuery(`^SELECT (.+) FROM "users"`).
+		WillReturnRows(rows)
+
+	req, err := http.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(payloadByte))
+	if err != nil {
+		t.Fatalf("error while making request")
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	UserLogin(db, w, req)
+
+	// validate status
+	if w.Code != http.StatusOK {
+		t.Fatalf("expeced status 200, got %d", w.Code)
+	}
+
+	// validate body
+	res := struct {
+		Status  int    `json:"status"`
+		Message string `json:"message"`
+		Data    struct {
+			Token string `json:"token"`
+		}
+	}{}
+
+	err = json.Unmarshal(w.Body.Bytes(), &res)
+	if err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if res.Status != 200 {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+}
+
+func TestUpdateUser(t *testing.T) {
+	db, mock := utils.GetDBMock()
+
+	payload := map[string]any{
+		"name":  "user1",
+		"email": "user@example.com",
+		"city":  "Bengaluru",
+	}
+
+	payloadByte, err := json.Marshal(payload)
+	if err != nil {
+		t.Error("error while parsing payload")
+	}
+
+	rows := sqlmock.NewRows([]string{"ID", "name", "email", "city"}).
+		AddRow(1, "user2", "user1@example.com", "Pune")
+
+	mock.ExpectQuery(`^SELECT (.+) FROM "users"`).
+		WillReturnRows(rows)
 
 	mock.ExpectBegin()
-	mock.ExpectExec("^UPDATE \"books\" SET").
-		WithArgs(1, "Book2", 1).
+
+	mock.ExpectExec(`^UPDATE "users"`).
+		WithArgs(
+			1,
+			"user1",
+			"Bengaluru",
+			"user@example.com",
+			1,
+		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	payload := struct {
-		ID     int    `json:"ID"`
-		Name   string `json:"name"`
-		Author string `json:"author"`
-	}{
-		ID:     1,
-		Name:   "Book2",
-		Author: "Author2",
-	}
-
-	bytesData, err := json.Marshal(&payload)
-	if err != nil {
-		t.Fatalf("error while encoding req")
-	}
-
-	req, err := http.NewRequest(http.MethodPost, "/books", bytes.NewReader(bytesData))
+	req, err := http.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader(payloadByte))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 
 	if err != nil {
 		t.Fatalf("error while making request")
 	}
 
-	w := httptest.NewRecorder()
+	req.Header.Set("Content-Type", "application/json")
 
-	UpdateBook(db, w, req)
+	w := httptest.NewRecorder()
+	UpdateUser(db, w, req)
 
 	// validate status
 	if w.Code != http.StatusOK {
@@ -237,28 +304,28 @@ func TestUpdateBook(t *testing.T) {
 	}
 
 	if res.Data.ID != 1 {
-		t.Fatalf("book update failed")
+		t.Fatalf("failed to create user")
 	}
 }
 
-func TestDeleteBook(t *testing.T) {
+func TestDeleteUser(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1")
+	mockRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
+		AddRow(1, "user1", "user@example.com")
 
-	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").
+	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
 		WithArgs(1, 1).
 		WillReturnRows(mockRows)
 
 	mock.ExpectBegin()
-	mock.ExpectExec("^UPDATE \"books\" SET \"deleted_at\"").
-		WithArgs(sqlmock.AnyArg(), 1).
+	mock.ExpectExec("^UPDATE \"users\" SET \"deleted_at\"").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	mock.ExpectCommit()
 
-	req, err := http.NewRequest(http.MethodDelete, "/books/1", nil)
+	req, err := http.NewRequest(http.MethodDelete, "/users/1", nil)
 	if err != nil {
 		t.Fatalf("error while making req")
 	}
@@ -267,7 +334,7 @@ func TestDeleteBook(t *testing.T) {
 
 	w := httptest.NewRecorder()
 
-	DeleteBook(db, w, req)
+	DeleteUser(db, w, req)
 
 	// validate body
 	res := struct {
@@ -286,6 +353,6 @@ func TestDeleteBook(t *testing.T) {
 	}
 
 	if res.Data.ID != 1 {
-		t.Fatalf("Book delete fail")
+		t.Fatalf("failed to delete user")
 	}
 }

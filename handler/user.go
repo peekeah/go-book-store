@@ -76,18 +76,17 @@ func CreateUser(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	existUser.Email = payload.Email
 
 	if err := db.First(&existUser, model.User{Email: payload.Email}).Error; err == nil {
-		res := ErrorResponse{w, http.StatusBadRequest, "user already exist"}
+		res := ErrorResponse{w, http.StatusNotFound, "user already exist"}
 		res.Dispatch()
 		return
 	}
 
 	payload.Password = hashedPwd
+	payload.Role = "user"
 
 	// default role user
 	if r.Context().Value("role") == "admin" {
 		payload.Role = "admin"
-	} else {
-		payload.Role = "user"
 	}
 
 	if err := db.Save(&payload).Error; err != nil {
