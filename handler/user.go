@@ -36,9 +36,16 @@ func GetUserById(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userIdInt, err := strconv.Atoi(id)
+	if err != nil {
+		res := ErrorResponse{w, http.StatusBadRequest, "invalid user id"}
+		res.Dispatch()
+		return
+	}
+
 	user := model.User{}
 
-	if err := db.Omit("password").First(&user, id).Error; err != nil {
+	if err := db.Omit("password").First(&user, userIdInt).Error; err != nil {
 		res := ErrorResponse{w, http.StatusNotFound, "user not found"}
 		res.Dispatch()
 		return

@@ -289,3 +289,39 @@ func TestDeleteBook(t *testing.T) {
 		t.Fatalf("Book delete fail")
 	}
 }
+
+func TestGetBookById_Errors(t *testing.T) {
+	db, _ := utils.GetDBMock()
+
+	// missing id
+	req, _ := http.NewRequest(http.MethodGet, "/books/", nil)
+	w := httptest.NewRecorder()
+
+	GetBookById(db, w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400")
+	}
+
+	// invalid id
+	req, _ = http.NewRequest(http.MethodGet, "/books/abc", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "abc"})
+	w = httptest.NewRecorder()
+
+	GetBookById(db, w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400")
+	}
+
+	// not found
+	req, _ = http.NewRequest(http.MethodGet, "/books/1", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "1"})
+	w = httptest.NewRecorder()
+
+	GetBookById(db, w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404")
+	}
+}
