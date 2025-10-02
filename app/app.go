@@ -78,7 +78,7 @@ func (s *Server) Run() {
 	// Book Routes
 	bookRoutes := router.PathPrefix("/books").Subrouter()
 	bookRoutes.Use(s.MiddlewareHandler(authenticate))
-	bookRoutes.HandleFunc("/purchase/{id}", s.RequestHandler(handler.PurchaseBook)).Methods("POST")
+	bookRoutes.HandleFunc("/purchase", s.RequestHandler(handler.PurchaseBook)).Methods("POST")
 
 	bookRoutes.HandleFunc("/", s.RequestHandler(handler.GetBooks)).Methods("GET")
 	bookRoutes.HandleFunc("/{id}", s.RequestHandler(handler.GetBookById)).Methods("GET")

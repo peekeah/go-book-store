@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -174,31 +175,33 @@ func DeleteBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 }
 
 func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	bookIdStr, ok := vars["id"]
-
-	if !ok {
-		res := ErrorResponse{w, http.StatusBadRequest, "book id required"}
-		res.Dispatch()
-	}
-
-	bookId, err := strconv.Atoi(bookIdStr)
-	if err != nil {
+	payload := model.PurchasePayload{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
 		res.Dispatch()
 	}
 
-	userId := r.Context().Value("user_id")
+	defer r.Body.Close()
+
+	if err := validate.Struct(&payload); err != nil {
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
+		return
+	}
+
+	userId := r.Context().Value("user_id").(uint)
 
 	// Transaction
 	tx := db.Begin()
 
-	if err := tx.Error; err != nil {
-		tx.Rollback()
-		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
-		res.Dispatch()
-		return
-	}
+	/*
+		if err := tx.Error; err != nil {
+			tx.Rollback()
+			res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+			res.Dispatch()
+			return
+		}
+	*/
 
 	user := model.User{}
 	book := model.Book{}
@@ -210,23 +213,36 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.First(&book, bookId).Error; err != nil {
+	if user.ID == 0 {
+		tx.Rollback()
+		res := ErrorResponse{w, http.StatusBadRequest, "user not found"}
+		res.Dispatch()
+		return
+	}
+
+	if err := tx.First(&book, payload.BookId).Error; err != nil {
 		tx.Rollback()
 		res := ErrorResponse{w, http.StatusBadRequest, "book not found"}
 		res.Dispatch()
 		return
 	}
 
-	if book.AvailableCopies == 0 {
+	if book.ID == 0 {
 		tx.Rollback()
-		res := ErrorResponse{w, http.StatusBadRequest, "book out of stock"}
+		res := ErrorResponse{w, http.StatusBadRequest, "book not found"}
 		res.Dispatch()
 		return
 	}
 
-	book.AvailableCopies = book.AvailableCopies - 1
+	if (book.AvailableCopies - payload.Quantity) <= 0 {
+		tx.Rollback()
+		res := ErrorResponse{w, http.StatusBadRequest, fmt.Sprintf("only %d stock available, can not purchase %d quantities", book.AvailableCopies, payload.Quantity)}
+		res.Dispatch()
+		return
+	}
 
-	book.PurchasedCustomers = append(book.PurchasedCustomers, user)
+	book.AvailableCopies = (book.AvailableCopies - payload.Quantity) - 1
+
 	if err := tx.Save(&book).Error; err != nil {
 		tx.Rollback()
 		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
@@ -234,15 +250,15 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.Purchase = append(user.Purchase, book)
-	if err := tx.Save(&user).Error; err != nil {
-		tx.Rollback()
-		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
-		res.Dispatch()
-		return
+	// purchase
+	purchase := model.Purchase{
+		UserID:   userId,
+		BookID:   uint(payload.BookId),
+		Quantity: payload.Quantity,
+		Amount:   payload.Quantity * book.Price,
 	}
 
-	if err := tx.Commit().Error; err != nil {
+	if err := db.Save(&purchase).Error; err != nil {
 		tx.Rollback()
 		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
 		res.Dispatch()
