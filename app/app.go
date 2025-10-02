@@ -67,7 +67,7 @@ func (s *Server) Run() {
 	userRoutes := router.PathPrefix("/users").Subrouter()
 	userRoutes.Use(s.MiddlewareHandler(authenticate))
 	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.GetUserById)).Methods("GET")
-	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.UpdateUser)).Methods("POST")
+	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.UpdateUser)).Methods("PUT")
 	userRoutes.HandleFunc("/{id}", s.RequestHandler(handler.DeleteUser)).Methods("DELETE")
 
 	// Admin user routes

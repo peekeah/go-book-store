@@ -100,6 +100,12 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	book := model.UpdateBook{}
 	book.ID = uint(bookId)
 
+	if err := validate.Struct(&book); err != nil {
+		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res.Dispatch()
+		return
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
 		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
 		res.Dispatch()
@@ -111,7 +117,7 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	dbBook := model.Book{}
 
 	if err := db.First(&dbBook, book.ID).Error; err != nil {
-		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
+		res := ErrorResponse{w, http.StatusNotFound, err.Error()}
 		res.Dispatch()
 		return
 	}
