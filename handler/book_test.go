@@ -117,6 +117,7 @@ func TestCreateBook(t *testing.T) {
 		"author":           "Author2",
 		"available_copies": 12,
 		"published_year":   1999,
+		"price":            200,
 	}
 
 	payloadByte, err := json.Marshal(payload)
@@ -135,6 +136,7 @@ func TestCreateBook(t *testing.T) {
 			"Author2",
 			1999,
 			12,
+			200,
 		).
 		WillReturnRows(mock.NewRows([]string{"ID"}).AddRow(1))
 	mock.ExpectCommit()
@@ -178,8 +180,8 @@ func TestCreateBook(t *testing.T) {
 func TestUpdateBook(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1")
+	mockRows := sqlmock.NewRows([]string{"ID", "name", "author", "price"}).
+		AddRow(1, "Book1", "Author1", 200)
 
 	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").
 		WithArgs(1, 1).
@@ -187,7 +189,7 @@ func TestUpdateBook(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec("^UPDATE \"books\" SET").
-		WithArgs(1, "Book2", 1).
+		WithArgs(1, "Book2", "Author2", 1).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -246,8 +248,8 @@ func TestUpdateBook(t *testing.T) {
 func TestDeleteBook(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
-	mockRows := sqlmock.NewRows([]string{"ID", "name", "author"}).
-		AddRow(1, "Book1", "Author1")
+	mockRows := sqlmock.NewRows([]string{"ID", "name", "author", "price"}).
+		AddRow(1, "Book1", "Author1", 200)
 
 	mock.ExpectQuery("^SELECT (.+) FROM \"books\"").
 		WithArgs(1, 1).
@@ -388,6 +390,7 @@ func TestCreateBook_SaveError(t *testing.T) {
 		"author":           "Author1",
 		"available_copies": 10,
 		"published_year":   2000,
+		"price":            200,
 	}
 
 	payloadByte, _ := json.Marshal(payload)

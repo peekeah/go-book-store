@@ -101,13 +101,13 @@ func UpdateBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	book := model.UpdateBook{}
 	book.ID = uint(bookId)
 
-	if err := validate.Struct(&book); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
 		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
 		res.Dispatch()
 		return
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
+	if err := validate.Struct(&book); err != nil {
 		res := ErrorResponse{w, http.StatusBadRequest, err.Error()}
 		res.Dispatch()
 		return

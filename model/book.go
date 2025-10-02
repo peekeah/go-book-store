@@ -17,6 +17,7 @@ type UpdateBook struct {
 	ID              uint   `json:"ID,omitempty"`
 	Name            string `json:"name,omitempty"`
 	Author          string `json:"author,omitempty"`
+	Price           int    `json:"price,omitempty"`
 	PublishedYear   int    `json:"published_year,omitempty"`
 	AvailableCopies int    `json:"available_copies,omitempty"`
 }
