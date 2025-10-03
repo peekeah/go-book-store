@@ -194,14 +194,12 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 	// Transaction
 	tx := db.Begin()
 
-	/*
-		if err := tx.Error; err != nil {
-			tx.Rollback()
-			res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
-			res.Dispatch()
-			return
-		}
-	*/
+	if err := tx.Error; err != nil {
+		tx.Rollback()
+		res := ErrorResponse{w, http.StatusInternalServerError, err.Error()}
+		res.Dispatch()
+		return
+	}
 
 	user := model.User{}
 	book := model.Book{}
@@ -264,6 +262,8 @@ func PurchaseBook(db *gorm.DB, w http.ResponseWriter, r *http.Request) {
 		res.Dispatch()
 		return
 	}
+
+	tx.Commit()
 
 	res := SuccessResponse{w, http.StatusOK, nil, "successfully purchased book"}
 	res.Dispatch()

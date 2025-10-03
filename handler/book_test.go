@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -508,8 +509,8 @@ func TestUpdateBook_UpdateError(t *testing.T) {
 	mock.ExpectRollback()
 
 	payload := map[string]any{"name": "Book2"}
-	payloadByte, _ := json.Marshal(payload)
 
+	payloadByte, _ := json.Marshal(payload)
 	req, _ := http.NewRequest(http.MethodPut, "/books/1", bytes.NewReader(payloadByte))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	w := httptest.NewRecorder()
@@ -575,26 +576,17 @@ func TestDeleteBook_DeleteError(t *testing.T) {
 
 // ============ PURCHASE BOOK TESTS ============
 
-func TestPurchaseBook_MissingID(t *testing.T) {
-	t.Skip()
+func TestPurchaseBook_InvalidPayload(t *testing.T) {
 	db, _ := utils.GetDBMock()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/purchase", nil)
-	w := httptest.NewRecorder()
-
-	PurchaseBook(db, w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected status 400, got %d", w.Code)
+	body := map[string]any{
+		"book_id": "a",
 	}
-}
 
-func TestPurchaseBook_InvalidID(t *testing.T) {
-	t.Skip()
-	db, _ := utils.GetDBMock()
+	bytesData, _ := json.Marshal(body)
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/abc/purchase", nil)
-	req = mux.SetURLVars(req, map[string]string{"id": "abc"})
+	req, _ := http.NewRequest(http.MethodPost, "/books/purchase", bytes.NewReader(bytesData))
+	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
 
 	PurchaseBook(db, w, req)
@@ -605,12 +597,18 @@ func TestPurchaseBook_InvalidID(t *testing.T) {
 }
 
 func TestPurchaseBook_TransactionBeginError(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	mock.ExpectBegin().WillReturnError(errors.New("transaction error"))
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 2,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
@@ -623,7 +621,6 @@ func TestPurchaseBook_TransactionBeginError(t *testing.T) {
 }
 
 func TestPurchaseBook_UserNotFound(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	mock.ExpectBegin()
@@ -631,12 +628,20 @@ func TestPurchaseBook_UserNotFound(t *testing.T) {
 		WillReturnError(errors.New("user not found"))
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 2,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
 
 	PurchaseBook(db, w, req)
+	fmt.Println("body:", w.Body)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", w.Code)
@@ -644,7 +649,6 @@ func TestPurchaseBook_UserNotFound(t *testing.T) {
 }
 
 func TestPurchaseBook_BookNotFound(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
@@ -657,7 +661,14 @@ func TestPurchaseBook_BookNotFound(t *testing.T) {
 		WillReturnError(errors.New("book not found"))
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 2,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
@@ -670,11 +681,10 @@ func TestPurchaseBook_BookNotFound(t *testing.T) {
 }
 
 func TestPurchaseBook_OutOfStock(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
-	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
-		AddRow(1, "user1", "user@example.com")
+	userRows := sqlmock.NewRows([]string{"ID", "name", "email", "available_copies"}).
+		AddRow(1, "user1", "user@example.com", 3)
 
 	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies"}).
 		AddRow(1, "Book1", 0)
@@ -686,7 +696,14 @@ func TestPurchaseBook_OutOfStock(t *testing.T) {
 		WillReturnRows(bookRows)
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 10,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
@@ -699,14 +716,13 @@ func TestPurchaseBook_OutOfStock(t *testing.T) {
 }
 
 func TestPurchaseBook_SaveBookError(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
 		AddRow(1, "user1", "user@example.com")
 
-	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies"}).
-		AddRow(1, "Book1", 5)
+	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies", "price"}).
+		AddRow(1, "Book1", 5, 200)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
@@ -717,7 +733,14 @@ func TestPurchaseBook_SaveBookError(t *testing.T) {
 		WillReturnError(errors.New("save error"))
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 3,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
@@ -729,15 +752,14 @@ func TestPurchaseBook_SaveBookError(t *testing.T) {
 	}
 }
 
-func TestPurchaseBook_SaveUserError(t *testing.T) {
-	t.Skip()
+func TestPurchaseBook_PurchaseError(t *testing.T) {
 	db, mock := utils.GetDBMock()
 
 	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
 		AddRow(1, "user1", "user@example.com")
 
-	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies"}).
-		AddRow(1, "Book1", 5)
+	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies", "price"}).
+		AddRow(1, "Book1", 5, 250)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
@@ -746,11 +768,20 @@ func TestPurchaseBook_SaveUserError(t *testing.T) {
 		WillReturnRows(bookRows)
 	mock.ExpectExec("^UPDATE \"books\"").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("^UPDATE \"users\"").
-		WillReturnError(errors.New("save user error"))
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`^INSERT INTO "purchases"`).
+		WillReturnError(errors.New("save error"))
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 3,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
@@ -763,14 +794,13 @@ func TestPurchaseBook_SaveUserError(t *testing.T) {
 }
 
 func TestPurchaseBook_CommitError(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
 		AddRow(1, "user1", "user@example.com")
 
-	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies"}).
-		AddRow(1, "Book1", 5)
+	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies", "price"}).
+		AddRow(1, "Book1", 5, 200)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
@@ -779,17 +809,37 @@ func TestPurchaseBook_CommitError(t *testing.T) {
 		WillReturnRows(bookRows)
 	mock.ExpectExec("^UPDATE \"books\"").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("^UPDATE \"users\"").
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectCommit().WillReturnError(errors.New("commit error"))
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`^INSERT INTO "purchases"`).
+		WithArgs(
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			1,
+			1,
+			3,
+			600,
+		).
+		WillReturnRows(mock.NewRows([]string{"ID"}).AddRow(1))
+
+	mock.ExpectCommit().
+		WillReturnError(errors.New("commit error"))
 	mock.ExpectRollback()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 3,
+	}
+
+	bytesData, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
 
 	PurchaseBook(db, w, req)
+	fmt.Println("bb:", w.Body)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", w.Code)
@@ -797,14 +847,13 @@ func TestPurchaseBook_CommitError(t *testing.T) {
 }
 
 func TestPurchaseBook_Success(t *testing.T) {
-	t.Skip()
 	db, mock := utils.GetDBMock()
 
 	userRows := sqlmock.NewRows([]string{"ID", "name", "email"}).
 		AddRow(1, "user1", "user@example.com")
 
-	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies"}).
-		AddRow(1, "Book1", 5)
+	bookRows := sqlmock.NewRows([]string{"ID", "name", "available_copies", "price"}).
+		AddRow(1, "Book1", 5, 200)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("^SELECT (.+) FROM \"users\"").
@@ -813,11 +862,30 @@ func TestPurchaseBook_Success(t *testing.T) {
 		WillReturnRows(bookRows)
 	mock.ExpectExec("^UPDATE \"books\"").
 		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("^UPDATE \"users\"").
-		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(`^INSERT INTO "purchases"`).
+		WithArgs(
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			1,
+			1,
+			3,
+			600,
+		).
+		WillReturnRows(mock.NewRows([]string{"ID"}).AddRow(1))
+	mock.ExpectCommit()
 	mock.ExpectCommit()
 
-	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", nil)
+	body := map[string]any{
+		"book_id":  1,
+		"quantity": 3,
+	}
+
+	bytesData, _ := json.Marshal(body)
+
+	req, _ := http.NewRequest(http.MethodPost, "/books/1/purchase", bytes.NewReader(bytesData))
 	req = mux.SetURLVars(req, map[string]string{"id": "1"})
 	req = req.WithContext(context.WithValue(req.Context(), "user_id", uint(1)))
 	w := httptest.NewRecorder()
